@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -11,24 +11,8 @@ import {
   Animated,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-
-// Type definitions
-interface Kelime {
-  id: number;
-  kelime: string;
-  tür: "verb" | "noun";
-  çekimler?: {
-    ich: string;
-    du: string;
-    er_sie_es: string;
-    wir: string;
-    ihr: string;
-    sie_Sie: string;
-  };
-  perfekt?: string;
-  anlam: string;
-  örnek: string;
-}
+import { kelimeler as kelimelerData } from "../data/kelimeler";
+import type { Kelime } from "../types/kelime";
 
 interface Question {
   type: "kelime-anlam" | "anlam-kelime" | "çekim" | "perfekt";
@@ -39,112 +23,106 @@ interface Question {
   verb?: string;
 }
 
-export default function App() {
-  // Örnek veri - gerçekte bu veriler JSON dosyasından veya API'den gelecek
-  const [kelimeler] = useState<Kelime[]>([
-    {
-      id: 1,
-      kelime: "gehen",
-      tür: "verb",
-      çekimler: {
-        ich: "gehe",
-        du: "gehst",
-        er_sie_es: "geht",
-        wir: "gehen",
-        ihr: "geht",
-        sie_Sie: "gehen",
-      },
-      perfekt: "ist gegangen",
-      anlam: "gitmek",
-      örnek: "Ich gehe heute ins Kino.",
-    },
-    {
-      id: 2,
-      kelime: "das Geld",
-      tür: "noun",
-      anlam: "para",
-      örnek: "Ich habe kein Geld.",
-    },
-    {
-      id: 3,
-      kelime: "sprechen",
-      tür: "verb",
-      çekimler: {
-        ich: "spreche",
-        du: "sprichst",
-        er_sie_es: "spricht",
-        wir: "sprechen",
-        ihr: "sprecht",
-        sie_Sie: "sprechen",
-      },
-      perfekt: "hat gesprochen",
-      anlam: "konuşmak",
-      örnek: "Er spricht sehr gut Deutsch.",
-    },
-    {
-      id: 4,
-      kelime: "die Schule",
-      tür: "noun",
-      anlam: "okul",
-      örnek: "Die Kinder gehen zur Schule.",
-    },
-    {
-      id: 5,
-      kelime: "haben",
-      tür: "verb",
-      çekimler: {
-        ich: "habe",
-        du: "hast",
-        er_sie_es: "hat",
-        wir: "haben",
-        ihr: "habt",
-        sie_Sie: "haben",
-      },
-      perfekt: "hat gehabt",
-      anlam: "sahip olmak",
-      örnek: "Ich habe einen Hund.",
-    },
-    {
-      id: 6,
-      kelime: "das Wasser",
-      tür: "noun",
-      anlam: "su",
-      örnek: "Das Wasser ist kalt.",
-    },
-    {
-      id: 7,
-      kelime: "kommen",
-      tür: "verb",
-      çekimler: {
-        ich: "komme",
-        du: "kommst",
-        er_sie_es: "kommt",
-        wir: "kommen",
-        ihr: "kommt",
-        sie_Sie: "kommen",
-      },
-      perfekt: "ist gekommen",
-      anlam: "gelmek",
-      örnek: "Er kommt aus Deutschland.",
-    },
-    {
-      id: 8,
-      kelime: "sehen",
-      tür: "verb",
-      çekimler: {
-        ich: "sehe",
-        du: "siehst",
-        er_sie_es: "sieht",
-        wir: "sehen",
-        ihr: "seht",
-        sie_Sie: "sehen",
-      },
-      perfekt: "hat gesehen",
-      anlam: "görmek",
-      örnek: "Ich sehe einen Hund.",
-    },
-  ]);
+// Soru tipleri ve kişi zamirleri component dışında sabit tutulur
+const QUESTION_TYPES = [
+  "kelime-anlam",
+  "anlam-kelime",
+  "çekim",
+  "perfekt",
+] as const;
+const KISILER = ["ich", "du", "er_sie_es", "wir", "ihr", "sie_Sie"] as const;
+const KISI_LABELS: Record<(typeof KISILER)[number], string> = {
+  ich: "ich",
+  du: "du",
+  er_sie_es: "er/sie/es",
+  wir: "wir",
+  ihr: "ihr",
+  sie_Sie: "sie/Sie",
+};
 
+// Şık seçeneklerini oluşturucu helper (kelimeler parametre olarak alınır)
+const generateOptions = (
+  kelimeler: Kelime[],
+  correctAnswer: string,
+  type: string,
+  verb: string | null = null
+): string[] => {
+  let options = [correctAnswer];
+  let attempts = 0;
+  const maxAttempts = 20;
+
+  while (options.length < 4 && attempts < maxAttempts) {
+    attempts++;
+    let wrongOption: string | undefined;
+
+    switch (type) {
+      case "anlam": {
+        const randomKelime =
+          kelimeler[Math.floor(Math.random() * kelimeler.length)];
+        wrongOption = randomKelime.anlam;
+        break;
+      }
+      case "kelime": {
+        const randomKelime2 =
+          kelimeler[Math.floor(Math.random() * kelimeler.length)];
+        wrongOption = randomKelime2.kelime;
+        break;
+      }
+      case "çekim": {
+        const verbKelimeler = kelimeler.filter(
+          (k) => k.tür === "verb" && k.kelime !== verb && k.çekimler
+        );
+        if (verbKelimeler.length > 0) {
+          const randomVerb =
+            verbKelimeler[Math.floor(Math.random() * verbKelimeler.length)];
+          const randomKişi =
+            KISILER[Math.floor(Math.random() * KISILER.length)];
+          if (randomVerb.çekimler) {
+            wrongOption = randomVerb.çekimler[randomKişi];
+          }
+        }
+        break;
+      }
+      case "perfekt": {
+        const verbKelimeler2 = kelimeler.filter(
+          (k) => k.tür === "verb" && k.perfekt && k.kelime !== verb
+        );
+        if (verbKelimeler2.length > 0) {
+          const randomVerb =
+            verbKelimeler2[Math.floor(Math.random() * verbKelimeler2.length)];
+          wrongOption = `${randomVerb.kelime} (perfekt)`;
+        }
+        break;
+      }
+    }
+
+    if (wrongOption && !options.includes(wrongOption)) {
+      options.push(wrongOption);
+    }
+  }
+
+  if (options.length < 4) {
+    const fallbackOptions = [
+      "seçenek 1",
+      "seçenek 2",
+      "seçenek 3",
+      "seçenek 4",
+    ];
+    while (options.length < 4) {
+      const fallback = fallbackOptions[options.length - 1];
+      if (!options.includes(fallback)) {
+        options.push(fallback);
+      } else {
+        options.push(`seçenek ${options.length}`);
+      }
+    }
+  }
+
+  return options.sort(() => Math.random() - 0.5);
+};
+
+export default function App() {
+  const [kelimeler] = useState<Kelime[]>(kelimelerData);
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [showResult, setShowResult] = useState(false);
@@ -153,106 +131,9 @@ export default function App() {
   const [streak, setStreak] = useState(0);
   const [fadeAnim] = useState(new Animated.Value(1));
 
-  // Soru tiplerini tanımla
-  const questionTypes = ["kelime-anlam", "anlam-kelime", "çekim", "perfekt"];
-
-  // Kişi zamirlerini tanımla
-  const kişiler = ["ich", "du", "er_sie_es", "wir", "ihr", "sie_Sie"] as const;
-  const kişiLabels: Record<(typeof kişiler)[number], string> = {
-    ich: "ich",
-    du: "du",
-    er_sie_es: "er/sie/es",
-    wir: "wir",
-    ihr: "ihr",
-    sie_Sie: "sie/Sie",
-  };
-
-  // Şık seçeneklerini oluştur - bu fonksiyonu generateQuestion'dan önce tanımla
-  const generateOptions = (
-    correctAnswer: string,
-    type: string,
-    verb: string | null = null
-  ): string[] => {
-    let options = [correctAnswer];
-    let attempts = 0;
-    const maxAttempts = 20; // Sonsuz döngü önlemi
-
-    while (options.length < 4 && attempts < maxAttempts) {
-      attempts++;
-      let wrongOption: string | undefined;
-
-      switch (type) {
-        case "anlam":
-          const randomKelime =
-            kelimeler[Math.floor(Math.random() * kelimeler.length)];
-          wrongOption = randomKelime.anlam;
-          break;
-
-        case "kelime":
-          const randomKelime2 =
-            kelimeler[Math.floor(Math.random() * kelimeler.length)];
-          wrongOption = randomKelime2.kelime;
-          break;
-
-        case "çekim":
-          const verbKelimeler = kelimeler.filter(
-            (k) => k.tür === "verb" && k.kelime !== verb && k.çekimler
-          );
-          if (verbKelimeler.length > 0) {
-            const randomVerb =
-              verbKelimeler[Math.floor(Math.random() * verbKelimeler.length)];
-            const randomKişi =
-              kişiler[Math.floor(Math.random() * kişiler.length)];
-            if (randomVerb.çekimler) {
-              wrongOption = randomVerb.çekimler[randomKişi];
-            }
-          }
-          break;
-
-        case "perfekt":
-          const verbKelimeler2 = kelimeler.filter(
-            (k) => k.tür === "verb" && k.perfekt && k.kelime !== verb
-          );
-          if (verbKelimeler2.length > 0) {
-            const randomVerb =
-              verbKelimeler2[Math.floor(Math.random() * verbKelimeler2.length)];
-            wrongOption = `${randomVerb.kelime} (perfekt)`;
-          }
-          break;
-      }
-
-      if (wrongOption && !options.includes(wrongOption)) {
-        options.push(wrongOption);
-      }
-    }
-
-    // Yeterli seçenek bulunamazsa, varsayılan seçenekler ekle
-    if (options.length < 4) {
-      const fallbackOptions = [
-        "seçenek 1",
-        "seçenek 2",
-        "seçenek 3",
-        "seçenek 4",
-      ];
-
-      while (options.length < 4) {
-        const fallback = fallbackOptions[options.length - 1];
-        if (!options.includes(fallback)) {
-          options.push(fallback);
-        } else {
-          options.push(`seçenek ${options.length}`);
-        }
-      }
-    }
-
-    return options.sort(() => Math.random() - 0.5);
-  };
-
-  // Rastgele bir soru oluştur
-  const generateQuestion = () => {
+  const generateQuestion = useCallback(() => {
     if (kelimeler.length === 0) return;
 
-    // Animasyon
     Animated.sequence([
       Animated.timing(fadeAnim, {
         toValue: 0,
@@ -269,18 +150,16 @@ export default function App() {
     const randomKelime =
       kelimeler[Math.floor(Math.random() * kelimeler.length)];
 
-    // Mevcut kelime için uygun soru tiplerini belirle
-    const availableTypes = questionTypes.filter((type) => {
-      if (type === "çekim") {
-        return randomKelime.tür === "verb" && randomKelime.çekimler;
+    const availableTypes = (QUESTION_TYPES as unknown as string[]).filter(
+      (type) => {
+        if (type === "çekim")
+          return randomKelime.tür === "verb" && !!randomKelime.çekimler;
+        if (type === "perfekt")
+          return randomKelime.tür === "verb" && !!randomKelime.perfekt;
+        return true;
       }
-      if (type === "perfekt") {
-        return randomKelime.tür === "verb" && randomKelime.perfekt;
-      }
-      return true;
-    });
+    );
 
-    // En az bir tip mevcut olduğundan emin ol
     const finalTypes =
       availableTypes.length > 0 ? availableTypes : ["kelime-anlam"];
     const questionType =
@@ -295,78 +174,79 @@ export default function App() {
             type: "kelime-anlam",
             question: randomKelime.kelime,
             correctAnswer: randomKelime.anlam,
-            options: generateOptions(randomKelime.anlam, "anlam"),
+            options: generateOptions(kelimeler, randomKelime.anlam, "anlam"),
             typeText: "Bu kelimenin anlamı nedir?",
           };
           break;
-
         case "anlam-kelime":
           question = {
             type: "anlam-kelime",
             question: randomKelime.anlam,
             correctAnswer: randomKelime.kelime,
-            options: generateOptions(randomKelime.kelime, "kelime"),
+            options: generateOptions(kelimeler, randomKelime.kelime, "kelime"),
             typeText: "Bu anlamın Almancası nedir?",
           };
           break;
-
         case "çekim":
           if (randomKelime.çekimler && randomKelime.tür === "verb") {
             const randomKişi =
-              kişiler[Math.floor(Math.random() * kişiler.length)];
+              KISILER[Math.floor(Math.random() * KISILER.length)];
             const çekim = randomKelime.çekimler[randomKişi];
             question = {
               type: "çekim",
-              question: `${kişiLabels[randomKişi]} _______ (${randomKelime.kelime})`,
+              question: `${KISI_LABELS[randomKişi]} _______ (${randomKelime.kelime})`,
               correctAnswer: çekim,
-              options: generateOptions(çekim, "çekim", randomKelime.kelime),
+              options: generateOptions(
+                kelimeler,
+                çekim,
+                "çekim",
+                randomKelime.kelime
+              ),
               verb: randomKelime.kelime,
               typeText: "Doğru çekimi seçin",
             };
           } else {
-            // Fallback
             question = {
               type: "kelime-anlam",
               question: randomKelime.kelime,
               correctAnswer: randomKelime.anlam,
-              options: generateOptions(randomKelime.anlam, "anlam"),
+              options: generateOptions(kelimeler, randomKelime.anlam, "anlam"),
               typeText: "Bu kelimenin anlamı nedir?",
             };
           }
           break;
-
         case "perfekt":
           if (randomKelime.perfekt && randomKelime.tür === "verb") {
             question = {
               type: "perfekt",
               question: `"${randomKelime.perfekt}" hangi fiilin perfekt halidir?`,
               correctAnswer: randomKelime.kelime,
-              options: generateOptions(randomKelime.kelime, "kelime"),
+              options: generateOptions(
+                kelimeler,
+                randomKelime.kelime,
+                "kelime"
+              ),
               verb: randomKelime.kelime,
               typeText: "Bu perfekt hali hangi fiildir?",
             };
           } else {
-            // Fallback
             question = {
               type: "kelime-anlam",
               question: randomKelime.kelime,
               correctAnswer: randomKelime.anlam,
-              options: generateOptions(randomKelime.anlam, "anlam"),
+              options: generateOptions(kelimeler, randomKelime.anlam, "anlam"),
               typeText: "Bu kelimenin anlamı nedir?",
             };
           }
           break;
-
         default:
-          // Default fallback
           question = {
             type: "kelime-anlam",
             question: randomKelime.kelime,
             correctAnswer: randomKelime.anlam,
-            options: generateOptions(randomKelime.anlam, "anlam"),
+            options: generateOptions(kelimeler, randomKelime.anlam, "anlam"),
             typeText: "Bu kelimenin anlamı nedir?",
           };
-          break;
       }
 
       setCurrentQuestion(question);
@@ -374,7 +254,6 @@ export default function App() {
       setShowResult(false);
     } catch (error) {
       console.error("Soru oluşturulurken hata:", error);
-      // Hata durumunda basit bir soru oluştur
       const fallbackQuestion: Question = {
         type: "kelime-anlam",
         question: randomKelime.kelime,
@@ -386,12 +265,10 @@ export default function App() {
       setSelectedAnswer(null);
       setShowResult(false);
     }
-  };
+  }, [kelimeler, fadeAnim]);
 
-  // Cevabı kontrol et
   const checkAnswer = (answer: string) => {
     if (!currentQuestion) return;
-
     setSelectedAnswer(answer);
     setShowResult(true);
     setTotalQuestions((prev) => prev + 1);
@@ -403,20 +280,17 @@ export default function App() {
       setStreak(0);
     }
 
-    // 2 saniye sonra yeni soru
     setTimeout(() => {
       generateQuestion();
     }, 2000);
   };
 
-  // İlk soruyu oluştur
   useEffect(() => {
     if (kelimeler.length > 0) {
       generateQuestion();
     }
-  }, [kelimeler]);
+  }, [kelimeler, generateQuestion]);
 
-  // Skorları sıfırla
   const resetScore = () => {
     Alert.alert(
       "Skorları Sıfırla",
