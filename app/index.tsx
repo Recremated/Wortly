@@ -1,0 +1,689 @@
+import React, { useState, useEffect } from "react";
+import {
+  StyleSheet,
+  Text,
+  View,
+  TouchableOpacity,
+  ScrollView,
+  SafeAreaView,
+  StatusBar,
+  Alert,
+  Animated,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+
+// Type definitions
+interface Kelime {
+  id: number;
+  kelime: string;
+  tür: "verb" | "noun";
+  çekimler?: {
+    ich: string;
+    du: string;
+    er_sie_es: string;
+    wir: string;
+    ihr: string;
+    sie_Sie: string;
+  };
+  perfekt?: string;
+  anlam: string;
+  örnek: string;
+}
+
+interface Question {
+  type: "kelime-anlam" | "anlam-kelime" | "çekim" | "perfekt";
+  question: string;
+  correctAnswer: string;
+  options: string[];
+  typeText: string;
+  verb?: string;
+}
+
+export default function App() {
+  // Örnek veri - gerçekte bu veriler JSON dosyasından veya API'den gelecek
+  const [kelimeler] = useState<Kelime[]>([
+    {
+      id: 1,
+      kelime: "gehen",
+      tür: "verb",
+      çekimler: {
+        ich: "gehe",
+        du: "gehst",
+        er_sie_es: "geht",
+        wir: "gehen",
+        ihr: "geht",
+        sie_Sie: "gehen",
+      },
+      perfekt: "ist gegangen",
+      anlam: "gitmek",
+      örnek: "Ich gehe heute ins Kino.",
+    },
+    {
+      id: 2,
+      kelime: "das Geld",
+      tür: "noun",
+      anlam: "para",
+      örnek: "Ich habe kein Geld.",
+    },
+    {
+      id: 3,
+      kelime: "sprechen",
+      tür: "verb",
+      çekimler: {
+        ich: "spreche",
+        du: "sprichst",
+        er_sie_es: "spricht",
+        wir: "sprechen",
+        ihr: "sprecht",
+        sie_Sie: "sprechen",
+      },
+      perfekt: "hat gesprochen",
+      anlam: "konuşmak",
+      örnek: "Er spricht sehr gut Deutsch.",
+    },
+    {
+      id: 4,
+      kelime: "die Schule",
+      tür: "noun",
+      anlam: "okul",
+      örnek: "Die Kinder gehen zur Schule.",
+    },
+    {
+      id: 5,
+      kelime: "haben",
+      tür: "verb",
+      çekimler: {
+        ich: "habe",
+        du: "hast",
+        er_sie_es: "hat",
+        wir: "haben",
+        ihr: "habt",
+        sie_Sie: "haben",
+      },
+      perfekt: "hat gehabt",
+      anlam: "sahip olmak",
+      örnek: "Ich habe einen Hund.",
+    },
+    {
+      id: 6,
+      kelime: "das Wasser",
+      tür: "noun",
+      anlam: "su",
+      örnek: "Das Wasser ist kalt.",
+    },
+  ]);
+
+  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
+  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
+  const [showResult, setShowResult] = useState(false);
+  const [score, setScore] = useState(0);
+  const [totalQuestions, setTotalQuestions] = useState(0);
+  const [streak, setStreak] = useState(0);
+  const [fadeAnim] = useState(new Animated.Value(1));
+
+  // Soru tiplerini tanımla
+  const questionTypes = ["kelime-anlam", "anlam-kelime", "çekim", "perfekt"];
+
+  // Kişi zamirlerini tanımla
+  const kişiler = ["ich", "du", "er_sie_es", "wir", "ihr", "sie_Sie"] as const;
+  const kişiLabels: Record<(typeof kişiler)[number], string> = {
+    ich: "ich",
+    du: "du",
+    er_sie_es: "er/sie/es",
+    wir: "wir",
+    ihr: "ihr",
+    sie_Sie: "sie/Sie",
+  };
+
+  // Rastgele bir soru oluştur
+  const generateQuestion = () => {
+    // Animasyon
+    Animated.sequence([
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    const randomKelime =
+      kelimeler[Math.floor(Math.random() * kelimeler.length)];
+    const availableTypes = questionTypes.filter((type) => {
+      if (type === "çekim" || type === "perfekt") {
+        return randomKelime.tür === "verb";
+      }
+      return true;
+    });
+
+    const questionType =
+      availableTypes[Math.floor(Math.random() * availableTypes.length)];
+
+    let question: Question;
+
+    switch (questionType) {
+      case "kelime-anlam":
+        question = {
+          type: "kelime-anlam",
+          question: randomKelime.kelime,
+          correctAnswer: randomKelime.anlam,
+          options: generateOptions(randomKelime.anlam, "anlam"),
+          typeText: "Bu kelimenin anlamı nedir?",
+        };
+        break;
+
+      case "anlam-kelime":
+        question = {
+          type: "anlam-kelime",
+          question: randomKelime.anlam,
+          correctAnswer: randomKelime.kelime,
+          options: generateOptions(randomKelime.kelime, "kelime"),
+          typeText: "Bu anlamın Almancası nedir?",
+        };
+        break;
+
+      case "çekim":
+        if (randomKelime.çekimler) {
+          const randomKişi =
+            kişiler[Math.floor(Math.random() * kişiler.length)];
+          const çekim = randomKelime.çekimler[randomKişi];
+          question = {
+            type: "çekim",
+            question: `${kişiLabels[randomKişi]} _______ (${randomKelime.kelime})`,
+            correctAnswer: çekim,
+            options: generateOptions(çekim, "çekim", randomKelime.kelime),
+            verb: randomKelime.kelime,
+            typeText: "Doğru çekimi seçin",
+          };
+        } else {
+          // Fallback to kelime-anlam if no çekimler
+          question = {
+            type: "kelime-anlam",
+            question: randomKelime.kelime,
+            correctAnswer: randomKelime.anlam,
+            options: generateOptions(randomKelime.anlam, "anlam"),
+            typeText: "Bu kelimenin anlamı nedir?",
+          };
+        }
+        break;
+
+      case "perfekt":
+        if (randomKelime.perfekt) {
+          question = {
+            type: "perfekt",
+            question: randomKelime.perfekt,
+            correctAnswer: `${randomKelime.kelime} (perfekt)`,
+            options: generateOptions(
+              `${randomKelime.kelime} (perfekt)`,
+              "perfekt"
+            ),
+            verb: randomKelime.kelime,
+            typeText: "Bu perfekt hali hangi fiildir?",
+          };
+        } else {
+          // Fallback to kelime-anlam if no perfekt
+          question = {
+            type: "kelime-anlam",
+            question: randomKelime.kelime,
+            correctAnswer: randomKelime.anlam,
+            options: generateOptions(randomKelime.anlam, "anlam"),
+            typeText: "Bu kelimenin anlamı nedir?",
+          };
+        }
+        break;
+
+      default:
+        // Default fallback
+        question = {
+          type: "kelime-anlam",
+          question: randomKelime.kelime,
+          correctAnswer: randomKelime.anlam,
+          options: generateOptions(randomKelime.anlam, "anlam"),
+          typeText: "Bu kelimenin anlamı nedir?",
+        };
+        break;
+    }
+
+    setCurrentQuestion(question);
+    setSelectedAnswer(null);
+    setShowResult(false);
+  };
+
+  // Şık seçeneklerini oluştur
+  const generateOptions = (
+    correctAnswer: string,
+    type: string,
+    verb: string | null = null
+  ): string[] => {
+    let options = [correctAnswer];
+
+    while (options.length < 4) {
+      let wrongOption: string | undefined;
+
+      switch (type) {
+        case "anlam":
+          const randomKelime =
+            kelimeler[Math.floor(Math.random() * kelimeler.length)];
+          wrongOption = randomKelime.anlam;
+          break;
+
+        case "kelime":
+          const randomKelime2 =
+            kelimeler[Math.floor(Math.random() * kelimeler.length)];
+          wrongOption = randomKelime2.kelime;
+          break;
+
+        case "çekim":
+          const verbKelimeler = kelimeler.filter(
+            (k) => k.tür === "verb" && k.kelime !== verb && k.çekimler
+          );
+          if (verbKelimeler.length > 0) {
+            const randomVerb =
+              verbKelimeler[Math.floor(Math.random() * verbKelimeler.length)];
+            const randomKişi =
+              kişiler[Math.floor(Math.random() * kişiler.length)];
+            if (randomVerb.çekimler) {
+              wrongOption = randomVerb.çekimler[randomKişi];
+            }
+          }
+          break;
+
+        case "perfekt":
+          const verbKelimeler2 = kelimeler.filter((k) => k.tür === "verb");
+          if (verbKelimeler2.length > 0) {
+            const randomVerb =
+              verbKelimeler2[Math.floor(Math.random() * verbKelimeler2.length)];
+            wrongOption = `${randomVerb.kelime} (perfekt)`;
+          }
+          break;
+      }
+
+      if (wrongOption && !options.includes(wrongOption)) {
+        options.push(wrongOption);
+      }
+    }
+
+    return options.sort(() => Math.random() - 0.5);
+  };
+
+  // Cevabı kontrol et
+  const checkAnswer = (answer: string) => {
+    if (!currentQuestion) return;
+
+    setSelectedAnswer(answer);
+    setShowResult(true);
+    setTotalQuestions((prev) => prev + 1);
+
+    if (answer === currentQuestion.correctAnswer) {
+      setScore((prev) => prev + 1);
+      setStreak((prev) => prev + 1);
+    } else {
+      setStreak(0);
+    }
+
+    // 2 saniye sonra yeni soru
+    setTimeout(() => {
+      generateQuestion();
+    }, 2000);
+  };
+
+  // İlk soruyu oluştur
+  useEffect(() => {
+    generateQuestion();
+  }, []);
+
+  // Skorları sıfırla
+  const resetScore = () => {
+    Alert.alert(
+      "Skorları Sıfırla",
+      "Tüm istatistikleri sıfırlamak istediğinizden emin misiniz?",
+      [
+        { text: "İptal", style: "cancel" },
+        {
+          text: "Evet",
+          onPress: () => {
+            setScore(0);
+            setTotalQuestions(0);
+            setStreak(0);
+            generateQuestion();
+          },
+        },
+      ]
+    );
+  };
+
+  const getSuccessRate = () => {
+    return totalQuestions > 0 ? Math.round((score / totalQuestions) * 100) : 0;
+  };
+
+  const getOptionStyle = (option: string) => {
+    if (!showResult || !currentQuestion) {
+      return styles.option;
+    }
+
+    if (option === currentQuestion.correctAnswer) {
+      return [styles.option, styles.optionCorrect];
+    } else if (option === selectedAnswer) {
+      return [styles.option, styles.optionWrong];
+    }
+    return [styles.option, styles.optionDisabled];
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#f0f8ff" />
+
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>Wortly</Text>
+            <TouchableOpacity onPress={resetScore} style={styles.resetButton}>
+              <Ionicons name="refresh-outline" size={24} color="#6b7280" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Stats */}
+          <View style={styles.stats}>
+            <View style={[styles.stat, styles.statGreen]}>
+              <Text style={[styles.statNumber, styles.statNumberGreen]}>
+                {score}
+              </Text>
+              <Text style={[styles.statLabel, styles.statLabelGreen]}>
+                Doğru
+              </Text>
+            </View>
+            <View style={[styles.stat, styles.statBlue]}>
+              <Text style={[styles.statNumber, styles.statNumberBlue]}>
+                {getSuccessRate()}%
+              </Text>
+              <Text style={[styles.statLabel, styles.statLabelBlue]}>
+                Başarı
+              </Text>
+            </View>
+            <View style={[styles.stat, styles.statOrange]}>
+              <View style={styles.streakContainer}>
+                <Ionicons name="trophy-outline" size={20} color="#ea580c" />
+                <Text style={[styles.statNumber, styles.statNumberOrange]}>
+                  {streak}
+                </Text>
+              </View>
+              <Text style={[styles.statLabel, styles.statLabelOrange]}>
+                Seri
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Question Card */}
+        {currentQuestion && (
+          <Animated.View style={[styles.questionCard, { opacity: fadeAnim }]}>
+            <Text style={styles.questionType}>{currentQuestion.typeText}</Text>
+            <Text style={styles.questionText}>{currentQuestion.question}</Text>
+
+            {/* Options */}
+            <View style={styles.options}>
+              {currentQuestion.options.map((option, index) => (
+                <TouchableOpacity
+                  key={index}
+                  onPress={() => !showResult && checkAnswer(option)}
+                  disabled={showResult}
+                  style={getOptionStyle(option)}
+                >
+                  <View style={styles.optionContent}>
+                    <Text
+                      style={[
+                        styles.optionText,
+                        showResult &&
+                          option === currentQuestion.correctAnswer &&
+                          styles.optionTextCorrect,
+                        showResult &&
+                          option === selectedAnswer &&
+                          option !== currentQuestion.correctAnswer &&
+                          styles.optionTextWrong,
+                        showResult &&
+                          option !== currentQuestion.correctAnswer &&
+                          option !== selectedAnswer &&
+                          styles.optionTextDisabled,
+                      ]}
+                    >
+                      {option}
+                    </Text>
+                    {showResult && (
+                      <>
+                        {option === currentQuestion.correctAnswer && (
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={24}
+                            color="#10b981"
+                          />
+                        )}
+                        {option === selectedAnswer &&
+                          option !== currentQuestion.correctAnswer && (
+                            <Ionicons
+                              name="close-circle"
+                              size={24}
+                              color="#ef4444"
+                            />
+                          )}
+                      </>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </Animated.View>
+        )}
+
+        {/* New Question Button */}
+        <TouchableOpacity
+          onPress={generateQuestion}
+          style={styles.newQuestionButton}
+        >
+          <Ionicons name="shuffle-outline" size={20} color="white" />
+          <Text style={styles.newQuestionButtonText}>Yeni Soru</Text>
+        </TouchableOpacity>
+
+        {/* Instructions */}
+        <View style={styles.instructions}>
+          <Text style={styles.instructionsTitle}>Nasıl Çalışır:</Text>
+          <Text style={styles.instructionsText}>
+            • Kelime anlamları sorulur
+          </Text>
+          <Text style={styles.instructionsText}>
+            • Fiil çekimleri test edilir
+          </Text>
+          <Text style={styles.instructionsText}>• Perfekt halleri sorulur</Text>
+          <Text style={styles.instructionsText}>
+            • Her soru çoktan seçmelidir
+          </Text>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#f0f8ff",
+  },
+  header: {
+    backgroundColor: "white",
+    borderRadius: 16,
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 24,
+    padding: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  titleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#1f2937",
+  },
+  resetButton: {
+    padding: 8,
+    borderRadius: 8,
+  },
+  stats: {
+    flexDirection: "row",
+    gap: 16,
+  },
+  stat: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  statGreen: {
+    backgroundColor: "#f0fdf4",
+  },
+  statBlue: {
+    backgroundColor: "#eff6ff",
+  },
+  statOrange: {
+    backgroundColor: "#fff7ed",
+  },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: "bold",
+    marginBottom: 4,
+  },
+  statNumberGreen: {
+    color: "#15803d",
+  },
+  statNumberBlue: {
+    color: "#2563eb",
+  },
+  statNumberOrange: {
+    color: "#ea580c",
+  },
+  statLabel: {
+    fontSize: 12,
+  },
+  statLabelGreen: {
+    color: "#15803d",
+  },
+  statLabelBlue: {
+    color: "#2563eb",
+  },
+  statLabelOrange: {
+    color: "#ea580c",
+  },
+  streakContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  questionCard: {
+    backgroundColor: "white",
+    borderRadius: 16,
+    marginHorizontal: 16,
+    marginBottom: 24,
+    padding: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  questionType: {
+    fontSize: 14,
+    color: "#6b7280",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  questionText: {
+    fontSize: 28,
+    fontWeight: "bold",
+    color: "#1f2937",
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  options: {
+    gap: 12,
+  },
+  option: {
+    padding: 16,
+    borderWidth: 2,
+    borderColor: "#e5e7eb",
+    borderRadius: 12,
+    backgroundColor: "white",
+  },
+  optionCorrect: {
+    borderColor: "#10b981",
+    backgroundColor: "#f0fdf4",
+  },
+  optionWrong: {
+    borderColor: "#ef4444",
+    backgroundColor: "#fef2f2",
+  },
+  optionDisabled: {
+    backgroundColor: "#f9fafb",
+  },
+  optionContent: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  optionText: {
+    fontSize: 18,
+    color: "#1f2937",
+  },
+  optionTextCorrect: {
+    color: "#065f46",
+  },
+  optionTextWrong: {
+    color: "#991b1b",
+  },
+  optionTextDisabled: {
+    color: "#6b7280",
+  },
+  newQuestionButton: {
+    backgroundColor: "#2563eb",
+    marginHorizontal: 16,
+    padding: 16,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  newQuestionButtonText: {
+    color: "white",
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  instructions: {
+    margin: 16,
+    backgroundColor: "rgba(255,255,255,0.5)",
+    borderRadius: 12,
+    padding: 16,
+  },
+  instructionsTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1f2937",
+    marginBottom: 8,
+  },
+  instructionsText: {
+    fontSize: 14,
+    color: "#4b5563",
+    marginBottom: 4,
+  },
+});
