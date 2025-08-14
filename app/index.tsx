@@ -4,11 +4,10 @@ import {
   Text,
   View,
   TouchableOpacity,
-  ScrollView,
-  SafeAreaView,
   StatusBar,
   Alert,
   Animated,
+  useColorScheme,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { kelimeler as kelimelerData } from "../data/kelimeler";
@@ -38,6 +37,34 @@ const KISI_LABELS: Record<(typeof KISILER)[number], string> = {
   wir: "wir",
   ihr: "ihr",
   sie_Sie: "sie/Sie",
+};
+
+// Dark mode renk paleti
+const COLORS = {
+  light: {
+    background: "#f0f8ff",
+    surface: "#ffffff",
+    primary: "#2563eb",
+    secondary: "#10b981",
+    text: "#1f2937",
+    textSecondary: "#6b7280",
+    border: "#e5e7eb",
+    success: "#10b981",
+    error: "#ef4444",
+    warning: "#ea580c",
+  },
+  dark: {
+    background: "#0f172a",
+    surface: "#1e293b",
+    primary: "#3b82f6",
+    secondary: "#22c55e",
+    text: "#f8fafc",
+    textSecondary: "#94a3b8",
+    border: "#334155",
+    success: "#22c55e",
+    error: "#f87171",
+    warning: "#fb923c",
+  },
 };
 
 // Şık seçeneklerini oluşturucu helper (kelimeler parametre olarak alınır)
@@ -122,6 +149,8 @@ const generateOptions = (
 };
 
 export default function App() {
+  const systemColorScheme = useColorScheme();
+  const [isDarkMode, setIsDarkMode] = useState(systemColorScheme === "dark");
   const [kelimeler] = useState<Kelime[]>(kelimelerData);
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
@@ -130,6 +159,14 @@ export default function App() {
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [streak, setStreak] = useState(0);
   const [fadeAnim] = useState(new Animated.Value(1));
+
+  // Sistem teması değiştiğinde otomatik güncelle
+  useEffect(() => {
+    setIsDarkMode(systemColorScheme === "dark");
+  }, [systemColorScheme]);
+
+  // Mevcut tema renklerini al
+  const colors = COLORS[isDarkMode ? "dark" : "light"];
 
   const generateQuestion = useCallback(() => {
     if (kelimeler.length === 0) return;
@@ -279,10 +316,6 @@ export default function App() {
     } else {
       setStreak(0);
     }
-
-    setTimeout(() => {
-      generateQuestion();
-    }, 2000);
   };
 
   useEffect(() => {
@@ -315,30 +348,70 @@ export default function App() {
   };
 
   const getOptionStyle = (option: string) => {
+    let baseStyle = [
+      styles.option,
+      { backgroundColor: colors.surface, borderColor: colors.border },
+    ];
+
     if (!showResult || !currentQuestion) {
-      return styles.option;
+      return baseStyle;
     }
 
     if (option === currentQuestion.correctAnswer) {
-      return [styles.option, styles.optionCorrect];
+      return [
+        ...baseStyle,
+        {
+          borderColor: colors.success,
+          backgroundColor: isDarkMode ? "#064e3b" : "#f0fdf4",
+        },
+      ];
     } else if (option === selectedAnswer) {
-      return [styles.option, styles.optionWrong];
+      return [
+        ...baseStyle,
+        {
+          borderColor: colors.error,
+          backgroundColor: isDarkMode ? "#7f1d1d" : "#fef2f2",
+        },
+      ];
     }
-    return [styles.option, styles.optionDisabled];
+    return [
+      ...baseStyle,
+      { backgroundColor: isDarkMode ? "#1e293b" : "#f9fafb" },
+    ];
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#f0f8ff" />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar
+        barStyle={isDarkMode ? "light-content" : "dark-content"}
+        backgroundColor={colors.background}
+        translucent
+      />
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <View style={styles.mainContainer}>
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { backgroundColor: colors.surface }]}>
           <View style={styles.titleRow}>
-            <Text style={styles.title}>Wortly</Text>
-            <TouchableOpacity onPress={resetScore} style={styles.resetButton}>
-              <Ionicons name="refresh-outline" size={24} color="#6b7280" />
-            </TouchableOpacity>
+            <Text style={[styles.title, { color: colors.text }]}>Wortly</Text>
+            <View style={styles.headerButtons}>
+              <TouchableOpacity
+                onPress={() => setIsDarkMode(!isDarkMode)}
+                style={styles.themeButton}
+              >
+                <Ionicons
+                  name={isDarkMode ? "sunny" : "moon"}
+                  size={24}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={resetScore} style={styles.resetButton}>
+                <Ionicons
+                  name="refresh-outline"
+                  size={24}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Stats */}
@@ -375,9 +448,20 @@ export default function App() {
 
         {/* Question Card */}
         {currentQuestion && (
-          <Animated.View style={[styles.questionCard, { opacity: fadeAnim }]}>
-            <Text style={styles.questionType}>{currentQuestion.typeText}</Text>
-            <Text style={styles.questionText}>{currentQuestion.question}</Text>
+          <Animated.View
+            style={[
+              styles.questionCard,
+              { opacity: fadeAnim, backgroundColor: colors.surface },
+            ]}
+          >
+            <Text
+              style={[styles.questionType, { color: colors.textSecondary }]}
+            >
+              {currentQuestion.typeText}
+            </Text>
+            <Text style={[styles.questionText, { color: colors.text }]}>
+              {currentQuestion.question}
+            </Text>
 
             {/* Options */}
             <View style={styles.options}>
@@ -392,17 +476,21 @@ export default function App() {
                     <Text
                       style={[
                         styles.optionText,
+                        { color: colors.text },
                         showResult &&
-                          option === currentQuestion.correctAnswer &&
-                          styles.optionTextCorrect,
+                          option === currentQuestion.correctAnswer && {
+                            color: colors.success,
+                          },
                         showResult &&
                           option === selectedAnswer &&
-                          option !== currentQuestion.correctAnswer &&
-                          styles.optionTextWrong,
+                          option !== currentQuestion.correctAnswer && {
+                            color: colors.error,
+                          },
                         showResult &&
                           option !== currentQuestion.correctAnswer &&
-                          option !== selectedAnswer &&
-                          styles.optionTextDisabled,
+                          option !== selectedAnswer && {
+                            color: colors.textSecondary,
+                          },
                       ]}
                     >
                       {option}
@@ -433,46 +521,96 @@ export default function App() {
           </Animated.View>
         )}
 
-        {/* New Question Button */}
-        <TouchableOpacity
-          onPress={generateQuestion}
-          style={styles.newQuestionButton}
-        >
-          <Ionicons name="shuffle-outline" size={20} color="white" />
-          <Text style={styles.newQuestionButtonText}>Yeni Soru</Text>
-        </TouchableOpacity>
+        {/* Next Question Button - only shows after answering */}
+        {showResult && (
+          <TouchableOpacity
+            onPress={() => {
+              setShowResult(false);
+              setSelectedAnswer(null);
+              generateQuestion();
+            }}
+            style={[
+              styles.nextQuestionButton,
+              { backgroundColor: colors.secondary },
+            ]}
+          >
+            <Ionicons name="arrow-forward" size={20} color="white" />
+            <Text style={styles.nextQuestionButtonText}>Sonraki Soru</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* New Question Button - only shows when no question is active */}
+        {!currentQuestion && (
+          <TouchableOpacity
+            onPress={() => {
+              setShowResult(false);
+              setSelectedAnswer(null);
+              generateQuestion();
+            }}
+            style={[
+              styles.newQuestionButton,
+              { backgroundColor: colors.primary },
+            ]}
+          >
+            <Ionicons name="shuffle-outline" size={20} color="white" />
+            <Text style={styles.newQuestionButtonText}>Yeni Soru</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Instructions */}
-        <View style={styles.instructions}>
-          <Text style={styles.instructionsTitle}>Nasıl Çalışır:</Text>
-          <Text style={styles.instructionsText}>
+        <View
+          style={[
+            styles.instructions,
+            {
+              backgroundColor: isDarkMode
+                ? "rgba(30, 41, 59, 0.5)"
+                : "rgba(255,255,255,0.5)",
+            },
+          ]}
+        >
+          <Text style={[styles.instructionsTitle, { color: colors.text }]}>
+            Nasıl Çalışır:
+          </Text>
+          <Text
+            style={[styles.instructionsText, { color: colors.textSecondary }]}
+          >
             • Kelime anlamları sorulur
           </Text>
-          <Text style={styles.instructionsText}>
+          <Text
+            style={[styles.instructionsText, { color: colors.textSecondary }]}
+          >
             • Fiil çekimleri test edilir
           </Text>
-          <Text style={styles.instructionsText}>• Perfekt halleri sorulur</Text>
-          <Text style={styles.instructionsText}>
+          <Text
+            style={[styles.instructionsText, { color: colors.textSecondary }]}
+          >
+            • Perfekt halleri sorulur
+          </Text>
+          <Text
+            style={[styles.instructionsText, { color: colors.textSecondary }]}
+          >
             • Her soru çoktan seçmelidir
           </Text>
         </View>
-      </ScrollView>
-    </SafeAreaView>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f0f8ff",
+    paddingTop: 0, // StatusBar alanı için
+  },
+  mainContainer: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: 50, // StatusBar için yeterli boşluk
   },
   header: {
-    backgroundColor: "white",
     borderRadius: 16,
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 24,
-    padding: 24,
+    marginBottom: 16,
+    padding: 20,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -485,8 +623,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 16,
   },
+  headerButtons: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  themeButton: {
+    padding: 8,
+    borderRadius: 8,
+  },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "bold",
     color: "#1f2937",
   },
@@ -545,11 +692,9 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   questionCard: {
-    backgroundColor: "white",
     borderRadius: 16,
-    marginHorizontal: 16,
-    marginBottom: 24,
-    padding: 24,
+    marginBottom: 16,
+    padding: 20,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -563,81 +708,72 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   questionText: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "bold",
     color: "#1f2937",
     textAlign: "center",
-    marginBottom: 24,
+    marginBottom: 20,
   },
   options: {
     gap: 12,
   },
   option: {
-    padding: 16,
+    padding: 14,
     borderWidth: 2,
-    borderColor: "#e5e7eb",
     borderRadius: 12,
-    backgroundColor: "white",
   },
-  optionCorrect: {
-    borderColor: "#10b981",
-    backgroundColor: "#f0fdf4",
-  },
-  optionWrong: {
-    borderColor: "#ef4444",
-    backgroundColor: "#fef2f2",
-  },
-  optionDisabled: {
-    backgroundColor: "#f9fafb",
-  },
+
   optionContent: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
   optionText: {
-    fontSize: 18,
+    fontSize: 16,
     color: "#1f2937",
   },
-  optionTextCorrect: {
-    color: "#065f46",
-  },
-  optionTextWrong: {
-    color: "#991b1b",
-  },
-  optionTextDisabled: {
-    color: "#6b7280",
-  },
+
   newQuestionButton: {
-    backgroundColor: "#2563eb",
-    marginHorizontal: 16,
+    padding: 14,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginBottom: 16,
+  },
+  newQuestionButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  nextQuestionButton: {
+    backgroundColor: "#10b981",
     padding: 16,
     borderRadius: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
+    marginBottom: 16,
   },
-  newQuestionButtonText: {
+  nextQuestionButtonText: {
     color: "white",
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "600",
   },
   instructions: {
-    margin: 16,
-    backgroundColor: "rgba(255,255,255,0.5)",
     borderRadius: 12,
     padding: 16,
+    marginBottom: 16,
   },
   instructionsTitle: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#1f2937",
     marginBottom: 8,
   },
   instructionsText: {
     fontSize: 14,
-    color: "#4b5563",
     marginBottom: 4,
   },
 });
